@@ -24,7 +24,7 @@ object ConfigurationRedactor {
       |    radarrTagIds: ${config.radarrConfiguration.radarrTagIds.mkString(",")}
       |
       |  PlexConfiguration:
-      |    plexWatchlistUrls: ${config.plexConfiguration.plexWatchlistUrls.mkString(", ")}
+      |    plexWatchlistUrls: ${config.plexConfiguration.plexWatchlistUrls.size} URLs configured
       |    plexTokens: ${config.plexConfiguration.plexTokens.map(_ => "REDACTED").mkString(", ")}
       |    skipFriendSync: ${config.plexConfiguration.skipFriendSync}
       |    hasPlexPass: ${config.plexConfiguration.hasPlexPass}

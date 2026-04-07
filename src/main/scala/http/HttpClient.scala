@@ -46,8 +46,6 @@ class HttpClient {
       apiKey: Option[String] = None,
       payload: Option[Json] = None
   ): IO[Either[Throwable, Json]] = {
-    val host = s"${url.host.getOrElse(Uri.Host.unsafeFromString("127.0.0.1")).value}"
-
     val baseRequest = Request[IO](method = method, uri = url)
       .withHeaders(
         Header.Raw(CIString("Accept"), "application/json"),

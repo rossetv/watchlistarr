@@ -95,4 +95,8 @@ if [ -n "$LOG_LEVEL" ]; then
   CMD+=("-Dlog.level=$LOG_LEVEL")
 fi
 
+if [ -n "$DELETE_FILES" ]; then
+  CMD+=("-Ddelete.deleteFiles=$DELETE_FILES")
+fi
+
 exec "${CMD[@]}" "${JAVA_OPTS[@]}"
