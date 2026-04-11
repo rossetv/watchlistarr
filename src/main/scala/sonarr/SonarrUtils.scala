@@ -2,6 +2,7 @@ package sonarr
 
 import cats.data.EitherT
 import cats.effect.IO
+import cats.implicits._
 import configuration.SonarrConfiguration
 import http.HttpClient
 import io.circe.{Decoder, Json}
@@ -61,11 +62,37 @@ trait SonarrUtils extends SonarrConversions {
       0L
     }
 
-    deleteToArr(client)(config.sonarrBaseUrl, config.sonarrApiKey, showId, deleteFiles)
-      .map { r =>
-        logger.info(s"Deleted ${item.title} from Sonarr")
-        r
+    for {
+      _ <- deleteToArr(client)(config.sonarrBaseUrl, config.sonarrApiKey, showId, deleteFiles)
+      _ = logger.info(s"Deleted ${item.title} from Sonarr")
+      // Clear any import list exclusion so re-adding to watchlist works
+      _ <- clearSonarrExclusion(client)(config.sonarrBaseUrl, config.sonarrApiKey, item)
+    } yield ()
+  }
+
+  private def clearSonarrExclusion(
+      client: HttpClient
+  )(baseUrl: Uri, apiKey: String, item: Item): EitherT[IO, Throwable, Unit] = {
+    val tvdbId = item.getTvdbId
+    if (tvdbId.isEmpty) {
+      EitherT.pure[IO, Throwable](())
+    } else {
+      (for {
+        exclusions <- getToArr[List[SonarrSeries]](client)(baseUrl, apiKey, "importlistexclusion")
+        matching = exclusions.filter(e => e.tvdbId.isDefined && tvdbId == e.tvdbId)
+        _ <- matching.traverse_ { excl =>
+          val url = baseUrl / "api" / "v3" / "importlistexclusion" / excl.id
+          EitherT(client.httpRequest(Method.DELETE, url, Some(apiKey)))
+            .recover { case _: MalformedMessageBodyFailure => Json.Null }
+            .map { _ =>
+              logger.info(s"Cleared Sonarr exclusion for ${item.title} (tvdbId: ${excl.tvdbId})")
+            }
+        }
+      } yield ()).recover {
+        case err =>
+          logger.debug(s"Could not clear Sonarr exclusion for ${item.title}: $err")
       }
+    }
   }
 
   private def deleteToArr(

@@ -58,11 +58,37 @@ trait RadarrUtils extends RadarrConversions {
       0L
     }
 
-    deleteToArr(client)(config.radarrBaseUrl, config.radarrApiKey, movieId, deleteFiles)
-      .map { r =>
-        logger.info(s"Deleted ${item.title} from Radarr")
-        r
+    for {
+      _ <- deleteToArr(client)(config.radarrBaseUrl, config.radarrApiKey, movieId, deleteFiles)
+      _ = logger.info(s"Deleted ${item.title} from Radarr")
+      // Clear any import exclusion so re-adding to watchlist works
+      _ <- clearExclusion(client)(config.radarrBaseUrl, config.radarrApiKey, item)
+    } yield ()
+  }
+
+  private def clearExclusion(
+      client: HttpClient
+  )(baseUrl: Uri, apiKey: String, item: Item): EitherT[IO, Throwable, Unit] = {
+    val tmdbId = item.getTmdbId
+    if (tmdbId.isEmpty) {
+      EitherT.pure[IO, Throwable](())
+    } else {
+      (for {
+        exclusions <- getToArr[List[RadarrMovieExclusion]](client)(baseUrl, apiKey, "exclusions")
+        matching = exclusions.filter(e => e.tmdbId.isDefined && tmdbId == e.tmdbId)
+        _ <- matching.traverse_ { excl =>
+          val url = baseUrl / "api" / "v3" / "exclusions" / excl.id
+          EitherT(client.httpRequest(Method.DELETE, url, Some(apiKey)))
+            .recover { case _: MalformedMessageBodyFailure => Json.Null }
+            .map { _ =>
+              logger.info(s"Cleared Radarr exclusion for ${item.title} (tmdbId: ${excl.tmdbId})")
+            }
+        }
+      } yield ()).recover {
+        case err =>
+          logger.debug(s"Could not clear exclusion for ${item.title}: $err")
       }
+    }
   }
 
   private def getToArr[T: Decoder](
